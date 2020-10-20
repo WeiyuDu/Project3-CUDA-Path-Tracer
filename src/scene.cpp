@@ -185,6 +185,7 @@ int Scene::loadCamera() {
             state.traceDepth = atoi(tokens[1].c_str());
         } else if (strcmp(tokens[0].c_str(), "FILE") == 0) {
             state.imageName = tokens[1];
+            state.denoisedImageName = state.imageName + "_denoised";
         }
         
     }
@@ -223,6 +224,8 @@ int Scene::loadCamera() {
     int arraylen = camera.resolution.x * camera.resolution.y;
     state.image.resize(arraylen);
     std::fill(state.image.begin(), state.image.end(), glm::vec3());
+    state.denoised_image.resize(arraylen);
+    std::fill(state.denoised_image.begin(), state.denoised_image.end(), glm::vec3());
 
     cout << "Loaded camera!" << endl;
     return 1;

@@ -2,6 +2,10 @@
 #include "preview.h"
 #include <cstring>
 
+#include "../imgui/imgui.h"
+#include "../imgui/imgui_impl_glfw.h"
+#include "../imgui/imgui_impl_opengl3.h"
+
 static std::string startTimeString;
 
 // For camera controls
@@ -10,6 +14,21 @@ static bool rightMousePressed = false;
 static bool middleMousePressed = false;
 static double lastX;
 static double lastY;
+
+int ui_iterations = 0;
+int startupIterations = 0;
+int lastLoopIterations = 0;
+bool ui_showGbuffer = false;
+bool ui_denoise = true;
+int ui_filterSize = 80;
+int last_filterSize = ui_filterSize;
+float ui_colorWeight = 0.45f;
+float last_colorWeight = ui_colorWeight;
+float ui_normalWeight = 0.35f;
+float last_normalWeight = ui_normalWeight;
+float ui_positionWeight = 0.2f;
+float last_positionWeight = ui_positionWeight;
+bool ui_saveAndExit = false;
 
 static bool camchanged = true;
 static float dtheta = 0, dphi = 0;
@@ -49,6 +68,9 @@ int main(int argc, char** argv) {
     Camera &cam = renderState->camera;
     width = cam.resolution.x;
     height = cam.resolution.y;
+
+    ui_iterations = renderState->iterations;
+    startupIterations = ui_iterations;
 
     glm::vec3 view = cam.view;
     glm::vec3 up = cam.up;
@@ -94,21 +116,63 @@ void saveImage() {
 
     // CHECKITOUT
     img.savePNG(filename);
-    //img.saveHDR(filename);  // Save a Radiance HDR file
+
+    // save denoised image
+    image img2(width, height);
+    for (int x = 0; x < width; x++) {
+        for (int y = 0; y < height; y++) {
+            int index = x + (y * width);
+            glm::vec3 pix = renderState->denoised_image[index];
+            img2.setPixel(width - 1 - x, y, glm::vec3(pix) / samples);
+        }
+    }
+
+    filename = renderState->denoisedImageName;
+    std::ostringstream ss2;
+    ss2 << filename << "." << startTimeString << "." << samples << "samp";
+    filename = ss2.str();
+
+    // CHECKITOUT
+    img2.savePNG(filename);
 }
 
 void runCuda() {
+    if (lastLoopIterations != ui_iterations) {
+        lastLoopIterations = ui_iterations;
+        camchanged = true;
+    }
+
+    if (last_colorWeight != ui_colorWeight) {
+        last_colorWeight = ui_colorWeight;
+        camchanged = true;
+    }
+
+    if (last_normalWeight != ui_normalWeight) {
+        last_normalWeight = ui_normalWeight;
+        camchanged = true;
+    }
+
+    if (last_positionWeight != ui_positionWeight) {
+        last_positionWeight = ui_positionWeight;
+        camchanged = true;
+    }
+
+    if (last_filterSize != ui_filterSize) {
+        last_filterSize = ui_filterSize;
+        camchanged = true;
+    }
+
     if (camchanged) {
         cout << "cam changed" << endl;
-        //iteration = 0;
+        iteration = 0;
         Camera &cam = renderState->camera;
         cameraPosition.x = zoom * sin(phi) * sin(theta);
         cameraPosition.y = zoom * cos(theta);
         cameraPosition.z = zoom * cos(phi) * sin(theta);
-        glm::vec3 tmp = cam.view;
+        //glm::vec3 tmp = cam.view;
         cam.view = -glm::normalize(cameraPosition);
-        cam.move += (tmp - cam.view);
-        cout << "cam.move" << cam.move[0] << " " << cam.move[1] << " " << cam.move[2] << " " << endl;
+        //cam.move += (tmp - cam.view);
+        //cout << "cam.move" << cam.move[0] << " " << cam.move[1] << " " << cam.move[2] << " " << endl;
         glm::vec3 v = cam.view;
         glm::vec3 u = glm::vec3(0, 1, 0);//glm::normalize(cam.up);
         glm::vec3 r = glm::cross(v, u);
@@ -129,28 +193,38 @@ void runCuda() {
         pathtraceInit(scene);
     }
 
-    if (iteration < renderState->iterations) {
-        uchar4 *pbo_dptr = NULL;
-        iteration++;
-        cudaGLMapBufferObject((void**)&pbo_dptr, pbo);
+    uchar4* pbo_dptr = NULL;
+    cudaGLMapBufferObject((void**)&pbo_dptr, pbo);
 
+    if (iteration < ui_iterations) {
+        //if (iteration < renderState->iterations) {
+        iteration++;
         // execute the kernel
         int frame = 0;
-
         // add timer
         cudaEvent_t start, stop;
         cudaEventCreate(&start);
         cudaEventCreate(&stop);
         cudaEventRecord(start);
-        pathtrace(pbo_dptr, frame, iteration);
+        pathtrace(frame, iteration);
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
         float milliseconds = 0;
         cudaEventElapsedTime(&milliseconds, start, stop);
         //std::cout << milliseconds << std::endl;
-        // unmap buffer object
-        cudaGLUnmapBufferObject(pbo);
-    } else {
+    }
+
+    if (ui_showGbuffer) {
+        showGBuffer(pbo_dptr);
+    }
+    else {
+        showImage(pbo_dptr, iteration);
+    }
+
+    // unmap buffer object
+    cudaGLUnmapBufferObject(pbo);
+
+    if (ui_saveAndExit) {
         saveImage();
         pathtraceFree();
         cudaDeviceReset();
@@ -179,6 +253,7 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
 }
 
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
+    if (ImGui::GetIO().WantCaptureMouse) return;
   leftMousePressed = (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS);
   rightMousePressed = (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS);
   middleMousePressed = (button == GLFW_MOUSE_BUTTON_MIDDLE && action == GLFW_PRESS);

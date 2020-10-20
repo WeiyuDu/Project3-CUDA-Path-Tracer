@@ -70,6 +70,8 @@ struct RenderState {
     int traceDepth;
     std::vector<glm::vec3> image;
     std::string imageName;
+    std::vector<glm::vec3> denoised_image;
+    std::string denoisedImageName;
 };
 
 struct PathSegment {
@@ -86,4 +88,10 @@ struct ShadeableIntersection {
   float t;
   glm::vec3 surfaceNormal;
   int materialId;
+};
+
+struct GBufferPixel {
+    float t;
+    glm::vec3 normal;
+    glm::vec3 pos;
 };
