@@ -426,6 +426,7 @@ __global__ void generateGBuffer(
         gBuffer[idx].t = shadeableIntersections[idx].t;
         gBuffer[idx].normal = shadeableIntersections[idx].surfaceNormal;
         gBuffer[idx].pos = pathSegments[idx].ray.origin + gBuffer[idx].t * pathSegments[idx].ray.direction;
+
     }
 }
 
@@ -548,7 +549,7 @@ __global__ void atrousConv(Camera cam, glm::vec3* denoised_in, glm::vec3* denois
 
             // wn nor
             glm::vec3 diff_nor = gBuffer[new_idx].normal - gBuffer[index].normal;
-            float dist_nor = glm::dot(diff_nor, diff_nor);//max(glm::dot(diff_nor, diff_nor) / (float)(stepwidth * stepwidth), 0.f);
+            float dist_nor = max(glm::dot(diff_nor, diff_nor) / (stepwidth * stepwidth), 0.f);
             float wn = min(exp(-dist_nor / sigma_nor), 1.f);
 
             // wp pos
@@ -561,20 +562,23 @@ __global__ void atrousConv(Camera cam, glm::vec3* denoised_in, glm::vec3* denois
             float dist_col = glm::dot(diff_col, diff_col);
             float wc = min(exp(-dist_col / sigma_col), 1.f);
 
-            float w = wn * wp * wc;
-            
+            float w = wn * wp * wc * coeff;
+            /*
             if (w != 0) {
                 w = w * coeff;
             }
             else {
                 w = coeff;
             }
-            
+            */
             tmp += w * denoised_in[new_idx];
             normalize += w;
         }
     }
-    denoised_out[index] = tmp / normalize;
+    if (normalize > 0) {
+        denoised_out[index] = tmp / normalize;
+    }
+    
 }
 
 __global__ void recon(Camera cam, glm::vec3* denoised, glm::vec3* image, glm::vec3* detail) {
@@ -755,7 +759,7 @@ void pathtrace(int frame, int iter) {
         float avg_col = 0.f;
         float avg_pos = 0.f;
         float sigma_nor = ui_normalWeight;
-        float sigma_col = ui_colorWeight;
+        float sigma_col = ui_colorWeight;// / powf(2.f, iter);
         float sigma_pos = ui_positionWeight;
         /*
         cout << pixelcount << endl;
@@ -792,11 +796,13 @@ void pathtrace(int frame, int iter) {
         float sigma_pos = 1.f;
         */
         cudaMemcpy(dev_denoised_in, dev_image, pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToDevice);
-        int num_s = (int)glm::log2(ui_filterSize / 5);
+        int num_s = (int)glm::log2(ui_filterSize / 5) + 1;
         for (int i = 0; i <= num_s; i++) {
             atrousConv << <numblocksDenoise, blockSize2d >> > (cam, dev_denoised_in, dev_denoised_out, i,
                 sigma_nor, sigma_col, sigma_pos,
                 dev_gBuffer);
+            sigma_col = sigma_col / 0.5f;
+            //sigma_nor = sigma_nor / 0.5f;
             swap(dev_denoised_in, dev_denoised_out);
         }
 
