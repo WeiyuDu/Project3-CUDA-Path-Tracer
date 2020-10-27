@@ -755,46 +755,10 @@ void pathtrace(int frame, int iter) {
         pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
 
     if (ui_denoise) {
-        float avg_nor = 0.f;
-        float avg_col = 0.f;
-        float avg_pos = 0.f;
         float sigma_nor = ui_normalWeight;
         float sigma_col = ui_colorWeight;// / powf(2.f, iter);
         float sigma_pos = ui_positionWeight;
-        /*
-        cout << pixelcount << endl;
-        for (int i = 0; i < pixelcount; i++) {
-            avg_nor += glm::l2Norm(dev_gBuffer[i].normal);
-            avg_pos += glm::l2Norm(dev_gBuffer[i].pos);
-           //avg_col += glm::dot(dev_image[i], dev_image[i]);
-           // cout << i << endl;
-        }
-        
-        
-        cout << avg_nor << " " << avg_pos << endl;
-        avg_nor = avg_nor / num_paths_orig;
-        avg_pos = avg_pos / num_paths_orig;
-        //avg_col = avg_col / (float)pixelcount;
-        float sigma_nor = 1.f;
-        float sigma_col = 1.f;
-        float sigma_pos = 1.f;
-        cout << avg_nor << " " << avg_pos << endl;
-        for (int i = 0; i < num_paths_orig; i++) {
-           // avg_nor += sqrt(glm::dot(dev_gBuffer[i].normal, dev_gBuffer[i].normal));
-            //avg_pos += sqrt(glm::dot(dev_gBuffer[i].pos, dev_gBuffer[i].pos));
-            //sigma_nor += powf(sqrt(glm::dot(dev_gBuffer[i].normal, dev_gBuffer[i].normal)) - avg_nor, 2.f);
-            //sigma_pos += powf(sqrt(glm::dot(dev_gBuffer[i].pos, dev_gBuffer[i].pos)) - avg_pos, 2.f);
-            //sigma_col += glm::dot(dev_image[i], dev_image[i]) - avg_col;
-        }
-        
-        sigma_nor /= (float)num_paths_orig;
-        sigma_pos /= (float)num_paths_orig;
-        //sigma_col /= (float)pixelcount;
-        
-        float sigma_nor = 1.f;
-        float sigma_col = 1.f;
-        float sigma_pos = 1.f;
-        */
+
         cudaMemcpy(dev_denoised_in, dev_image, pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToDevice);
         int num_s = (int)glm::log2(ui_filterSize / 5) + 1;
         for (int i = 0; i <= num_s; i++) {
